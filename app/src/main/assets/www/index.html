@@ -325,6 +325,7 @@
                 <button type="button" class="btn-ghost" id="srcZipBtn">📦 رفع مشروع ZIP</button>
             </div>
             <div class="btn-row"><button type="button" class="btn-ghost" id="srcSampleBtn">✨ حط مثال جاهز</button></div>
+            <div class="live-hint" data-modes="python">💡 دمج لغات: لو رفعت ZIP بايثون وبيه أيضاً ملفات .java أو .kt، ننده عليهن تلقائياً من بايثون (from java import *) — بدون أي إعداد إضافي.</div>
             <div class="stats-bar" id="srcZipStats" style="display:none;margin:2px 0 0"></div>
             <div style="text-align:center"><button type="button" class="rm-link" id="srcZipRm" style="display:none">إزالة الـ ZIP والرجوع للكود المكتوب</button></div>
 
@@ -431,6 +432,31 @@
             <button class="btn-ghost" type="button" id="publishSiteBtn">🌐 نشر / تحديث الموقع</button>
             <div id="siteInfo" style="display:none;margin-top:8px"></div>
         </div>
+
+        <div class="sec" id="secBotHead" style="cursor:pointer" role="button" tabindex="0"><span class="n">🤖</span>بوتات — تشغيل شبه دائم مجاني (اختياري)<button type="button" id="secBotToggle" style="border:none;background:none;color:var(--magenta);font-weight:900;font-size:1rem;cursor:pointer;flex:0 0 auto">▾</button></div>
+        <div class="toggle-group" id="secBotBody">
+            <div class="live-hint">تكدر ترفع بوت (ديسكورد، تيليجرام، أي بوت Python أو Node) ويشتغل على GitHub مجاناً — تقريباً دوم شغال (وردية كل 6 ساعات تلقائياً، هذا أقصى وقت مسموح من GitHub نفسه للتشغيل المجاني المستمر، مو تحديد مني). خلي المستودع عام (فوق ⚙️ مستودع خاص = مطفي) عشان دقائق تشغيل غير محدودة مجاناً.</div>
+            <div class="langs" id="botLangGroup" style="margin:10px 0">
+                <button type="button" class="lang active" data-botlang="python"><span class="e">🐍</span>بايثون</button>
+                <button type="button" class="lang" data-botlang="node"><span class="e">🟩</span>Node.js</button>
+            </div>
+            <div class="field" style="margin-bottom:10px">
+                <label class="lbl" for="fBotCode">كود البوت</label>
+                <textarea id="fBotCode" class="small" spellcheck="false" placeholder="# بوت بايثون&#10;print('البوت شغال')"></textarea>
+            </div>
+            <div class="btn-row">
+                <button type="button" class="btn-ghost" id="botZipBtn">📦 رفع مشروع بوت ZIP (متعدد الملفات)</button>
+            </div>
+            <div class="stats-bar" id="botZipStats" style="display:none;margin:2px 0 0"></div>
+            <div style="text-align:center"><button type="button" class="rm-link" id="botZipRm" style="display:none">إزالة الـ ZIP والرجوع للكود المكتوب</button></div>
+            <div class="field" style="margin-top:10px">
+                <label class="lbl" id="botLibsLbl" for="fBotLibs">المكتبات (requirements.txt، وحدة بكل سطر)</label>
+                <textarea id="fBotLibs" class="small" spellcheck="false" placeholder="discord.py"></textarea>
+            </div>
+            <button class="btn-ghost" type="button" id="deployBotBtn">🤖 نشر / تحديث البوت</button>
+            <div id="botInfo" style="display:none;margin-top:8px"></div>
+        </div>
+
         <div class="toggle-group">
             <div class="toggle-item" data-modes="url zip code python java kotlin lua">
                 <span>قفل الاتجاه عمودي فقط</span>
@@ -530,6 +556,7 @@
 <input type="file" id="srcInput" hidden>
 <input type="file" id="srcZipInput" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 <input type="file" id="apkZipInput" accept=".zip,application/zip,application/x-zip-compressed" hidden>
+<input type="file" id="botZipInput" accept=".zip,application/zip,application/x-zip-compressed" hidden>
 
 <script>
 /*LIB-START*/
@@ -840,7 +867,7 @@ function normalizeSrcZip(entries, lang) {
 }
 
 /* مشروع أندرويد جاهز: نقص المجلد الجذر عند settings.gradle */
-const ANDROID_SKIP = /(^|\/)(\.git|\.gradle|\.idea|build|captures|node_modules)(\/|$)|(^|\/)local\.properties$|\.iml$/;
+const ANDROID_SKIP = /(^|\/)(\.git|\.gradle|\.idea|build|captures|node_modules|\.cxx|\.externalNativeBuild|target|out|dist|\.vscode|\.vs|Pods|DerivedData|coverage|\.next|venv|\.venv|__pycache__|\.pytest_cache)(\/|$)|(^|\/)local\.properties$|\.iml$/;
 function normalizeAndroidZip(entries) {
     const clean = cleanZipEntries(entries).filter(f => !ANDROID_SKIP.test(f.path));
     const depth = f => f.path.split('/').length;
@@ -2470,6 +2497,116 @@ function workflowYaml(o) {
 }
 
 /* ---------------------------------------------------------------
+   بوتات: تشغيل مستمر تقريبي مجاني عبر GitHub Actions
+   ملاحظة صادقة: GitHub ما يسمح بعملية Actions تشتغل بشكل دائم حقيقي
+   مجاناً — أقصى مدة للعملية الوحدة 6 ساعات. الحل هنا: مستودع عام
+   (دقائق Actions غير محدودة مجاناً بالمستودعات العامة) + جدولة تشغّل
+   وردية جديدة كل ~6 ساعات بالضبط قبل ما تخلص الوردية السابقة
+   (concurrency queue بدون إلغاء) عشان ما يصير انقطاع محسوس.
+---------------------------------------------------------------- */
+function botWorkflowYaml(botLang) {
+    const lines = [
+        'name: Pure Bot 24/7',
+        'on:',
+        '  schedule:',
+        '    - cron: "0 */6 * * *"',
+        '  workflow_dispatch:',
+        'concurrency:',
+        '  group: pure-bot-run',
+        '  cancel-in-progress: false',
+        'jobs:',
+        '  run:',
+        '    runs-on: ubuntu-latest',
+        '    timeout-minutes: 355',
+        '    steps:',
+        '      - name: Checkout',
+        '        uses: actions/checkout@v4'
+    ];
+    if (botLang === 'node') {
+        lines.push(
+            '      - name: Setup Node',
+            '        uses: actions/setup-node@v4',
+            '        with:',
+            '          node-version: "20"',
+            '      - name: Install deps',
+            '        run: if [ -f package.json ]; then npm install --omit=dev; fi',
+            '      - name: Run bot',
+            '        run: node bot.js'
+        );
+    } else {
+        lines.push(
+            '      - name: Setup Python',
+            '        uses: actions/setup-python@v5',
+            '        with:',
+            '          python-version: "3.11"',
+            '      - name: Install deps',
+            '        run: if [ -f requirements.txt ]; then pip install -r requirements.txt; fi',
+            '      - name: Run bot',
+            '        run: python bot.py'
+        );
+    }
+    return lines.join('\n') + '\n';
+}
+function botRepoName(app) { return 'pure-bot-' + slugOf(app.name, 'bot') + '-' + app.id; }
+function botFiles(app) {
+    const lang = app.botLang || 'python';
+    const files = [];
+    if (app.botFiles && app.botFiles.length) {
+        files.push(...app.botFiles);
+    } else {
+        const entry = lang === 'node' ? 'bot.js' : 'bot.py';
+        files.push({ path: entry, data: enc.encode(app.botCode || '') });
+        if (lang === 'python' && (app.botLibs || '').trim()) {
+            const { list } = parseReqs(app.botLibs);
+            files.push({ path: 'requirements.txt', data: enc.encode(list.join('\n') + '\n') });
+        }
+    }
+    files.push({ path: '.github/workflows/bot.yml', data: enc.encode(botWorkflowYaml(lang)) });
+    files.push({ path: 'README.md', data: enc.encode('# ' + (app.name || 'Pure Bot') + '\n\nبوت تم رفعه عبر تطبيق بيور. يشتغل بشكل شبه مستمر عبر GitHub Actions (وردية كل 6 ساعات، تطابق المدة القصوى المسموحة من GitHub نفسه للتشغيل المجاني). خلي المستودع عام إذا تريد دقائق تشغيل غير محدودة مجاناً.\n') });
+    return files;
+}
+async function githubDeployBot(ctx) {
+    const { token, app, log } = ctx;
+    const gh = makeGH(token);
+    const me = (await gh.api('/user')).data.login;
+    const repoName = (app.bot && app.bot.owner === me && app.bot.name) ? app.bot.name : botRepoName(app);
+    let repo;
+    try {
+        repo = (await gh.api('/repos/' + me + '/' + repoName)).data;
+        if (log) log('نستخدم مستودع البوت: ' + me + '/' + repoName);
+    } catch (e) {
+        if (e.status !== 404) throw e;
+        if (log) log('ننشئ مستودع بوت جديد: ' + repoName);
+        repo = (await gh.api('/user/repos', { method: 'POST', body: { name: repoName, private: !!app.privateRepo, auto_init: true, description: 'Bot deployed with Pure App Builder' } })).data;
+    }
+    const branch = repo.default_branch || 'main';
+    let head = null;
+    for (let i = 0; i < 10 && !head; i++) {
+        try { head = (await gh.api('/repos/' + me + '/' + repoName + '/git/ref/heads/' + branch)).data.object.sha; }
+        catch (e) { if (e.status !== 404 && e.status !== 409) throw e; await sleep(1500); }
+    }
+    if (!head) throw new Error('المستودع لسه ما جهز، جرب مرة ثانية بعد ثواني');
+    const files = botFiles(app);
+    if (log) log('رفع ' + files.length + ' ملف للبوت...');
+    const entries = [];
+    for (const f of files) {
+        const txt = TEXT_EXT.test(f.path) || /\.ya?ml$/i.test(f.path) ? asText(f.data) : null;
+        if (txt !== null) entries.push({ path: f.path, mode: '100644', type: 'blob', content: txt });
+        else {
+            const b = (await gh.api('/repos/' + me + '/' + repoName + '/git/blobs', { method: 'POST', body: { content: u8ToB64(f.data), encoding: 'base64' } })).data;
+            entries.push({ path: f.path, mode: '100644', type: 'blob', sha: b.sha });
+        }
+    }
+    const tree = (await gh.api('/repos/' + me + '/' + repoName + '/git/trees', { method: 'POST', body: { tree: entries } })).data;
+    const commit = (await gh.api('/repos/' + me + '/' + repoName + '/git/commits', { method: 'POST', body: { message: 'Deploy bot: ' + (app.name || 'bot'), tree: tree.sha, parents: [head] } })).data;
+    await gh.api('/repos/' + me + '/' + repoName + '/git/refs/heads/' + branch, { method: 'PATCH', body: { sha: commit.sha, force: true } });
+    if (log) log('✔ تم رفع البوت، نشغّله أول مرة...');
+    try { await gh.api('/repos/' + me + '/' + repoName + '/actions/workflows/bot.yml/dispatches', { method: 'POST', body: { ref: branch } }); }
+    catch (e) { /* GitHub يحتاج ثواني بعد أول Push حتى يسجل الـ workflow — بيشتغل لحاله بأول جدولة لو فشل هذا */ }
+    return { owner: me, repo: repoName, url: 'https://github.com/' + me + '/' + repoName + '/actions' };
+}
+
+/* ---------------------------------------------------------------
    مصادر اللغات (لصق/ZIP) → ملفات
 ---------------------------------------------------------------- */
 function srcExt(mode) { return LANGS[mode].ext; }
@@ -2814,6 +2951,14 @@ function makeGH(token) {
             else if (res.status === 403 || res.status === 404) {
                 if (/workflow/i.test(msg)) msg = 'التوكن ناقصه صلاحية workflow، سوّي توكن جديد وفعّل repo و workflow';
             }
+            if (/secret/i.test(msg) && /push protection|rule violation/i.test(msg)) {
+                const bypassUrls = [];
+                const errs = (data && (data.errors || (data.error && [data.error]))) || [];
+                errs.forEach(x => { if (x && x.bypass_url) bypassUrls.push(x.bypass_url); if (x && x.message) {} });
+                msg = 'GitHub رفض الرفع لأنه لكى داخل ملفاتك شي يشبه مفتاح/توكن سري حقيقي (API key، كلمة مرور، إلخ) — هذا حماية من GitHub نفسه مو مشكلة بالتطبيق. ' +
+                    'الحل: شيل الملف أو القيمة لي فيها السر من مشروعك وجرب ثانية (مثال: ملفات google-services.json، keystore، .env، أو أي مفتاح مكتوب مباشرة بالكود). ' +
+                    (bypassUrls.length ? 'أو إذا متأكد إنه مو سر حقيقي (مثال كود تجريبي)، افتح هذا الرابط واسمح بالرفع يدوياً: ' + bypassUrls.join(' | ') : '');
+            }
             const err = new Error(msg);
             err.status = res.status;
             throw err;
@@ -2965,12 +3110,14 @@ async function githubBuild(ctx) {
         if (txt !== null) entries.push({ path: f.path, mode: '100644', type: 'blob', content: txt });
         else binaries.push(f);
     }
-    log('رفع ' + files.length + ' ملف...');
+    log('رفع ' + files.length + ' ملف' + (binaries.length > 500 ? ' (' + binaries.length + ' ملف ثنائي يحتاج طلب منفصل لكل وحد — هذا راح ياخذ وقت، استمر بالانتظار)' : '') + '...');
     let done = 0;
-    await pool(binaries, 3, async f => {
+    const concurrency = binaries.length > 2000 ? 12 : 6;
+    await pool(binaries, concurrency, async f => {
         const b = (await gh.api('/repos/' + me + '/' + repoName + '/git/blobs', { method: 'POST', body: { content: u8ToB64(f.data), encoding: 'base64' } })).data;
         entries.push({ path: f.path, mode: '100644', type: 'blob', sha: b.sha });
         done++;
+        if (done % 100 === 0 || done === binaries.length) log('رفع ' + done + '/' + binaries.length + ' ملف ثنائي...');
         progress(8 + Math.round(24 * done / Math.max(binaries.length, 1)));
     });
 
@@ -3279,7 +3426,7 @@ const DB = (() => {
 /* ---------------------------------------------------------------
    الحالة والنماذج
 ---------------------------------------------------------------- */
-const S = { apps: [], draft: null, dirty: false, building: false, buildId: null, pendingBuild: null, pendingSite: null, pushing: false, filter: '', lastErr: '', lastLink: '' };
+const S = { apps: [], draft: null, dirty: false, building: false, buildId: null, pendingBuild: null, pendingSite: null, pendingBot: null, pushing: false, filter: '', lastErr: '', lastLink: '' };
 
 function newApp() {
     const id = uid();
@@ -3289,6 +3436,7 @@ function newApp() {
         srcCode: '', srcFiles: null, srcZipName: '', srcEntry: '', srcLibs: '', srcExtraJava: [], permissions: [],
         pyRun: 'console', pyPort: 8080, bg: false, live: false, liveBuilt: false, liveVersion: 0, jdk: '17', playBuild: false,
         seoTitle: '', seoDesc: '', site: null,
+        botLang: 'python', botCode: '', botFiles: null, botZipName: '', botLibs: '', bot: null,
         fullscreen: false, portrait: false, zoom: false, privateRepo: false,
         versionName: '1.0.0', versionCode: 1, color: '#c81466',
         repo: null, lastBuild: null, createdAt: Date.now(), updatedAt: Date.now()
@@ -3304,7 +3452,7 @@ function migrate(a) {
         ['pyCode', 'pyFiles', 'pyZipName', 'pyEntry', 'pyReqs'].forEach(k => { delete a[k]; });
     }
     const d = newApp();
-    ['srcCode', 'srcFiles', 'srcZipName', 'srcEntry', 'srcLibs', 'srcExtraJava', 'permissions', 'pyRun', 'pyPort', 'bg', 'live', 'liveBuilt', 'liveVersion', 'jdk', 'playBuild', 'seoTitle', 'seoDesc', 'site'].forEach(k => { if (a[k] === undefined) a[k] = d[k]; });
+    ['srcCode', 'srcFiles', 'srcZipName', 'srcEntry', 'srcLibs', 'srcExtraJava', 'permissions', 'pyRun', 'pyPort', 'bg', 'live', 'liveBuilt', 'liveVersion', 'jdk', 'playBuild', 'seoTitle', 'seoDesc', 'site', 'botLang', 'botCode', 'botFiles', 'botZipName', 'botLibs', 'bot'].forEach(k => { if (a[k] === undefined) a[k] = d[k]; });
     return a;
 }
 
@@ -3459,6 +3607,7 @@ $('ghSave').onclick = async () => {
         setTimeout(closeGhModal, 900);
         if (S.pendingBuild) { const id = S.pendingBuild; S.pendingBuild = null; setTimeout(() => runBuild(id), 1000); }
         if (S.pendingSite) { const id = S.pendingSite; S.pendingSite = null; setTimeout(() => publishSite(id), 1000); }
+        if (S.pendingBot) { const id = S.pendingBot; S.pendingBot = null; setTimeout(() => deployBot(id), 1000); }
     } catch (e) {
         ghMsg('❌ ' + (e.message || 'فشل التحقق من التوكن'), 'bad');
     } finally { btn.disabled = false; }
@@ -3565,6 +3714,89 @@ function renderZipStats() {
         $('zipText').textContent = 'اضغط أو اسحب ملف ZIP هنا';
     }
 }
+function setBotLang(lang) {
+    S.draft.botLang = lang;
+    document.querySelectorAll('#botLangGroup [data-botlang]').forEach(b => b.classList.toggle('active', b.dataset.botlang === lang));
+    $('fBotCode').placeholder = lang === 'node' ? "// بوت Node.js\nconsole.log('البوت شغال');" : "# بوت بايثون\nprint('البوت شغال')";
+    $('botLibsLbl').textContent = lang === 'node' ? 'المكتبات (package.json تلقائي قريباً — حالياً حط require فوق بالكود مباشرة)' : 'المكتبات (requirements.txt، وحدة بكل سطر)';
+    $('fBotLibs').style.display = lang === 'node' ? 'none' : '';
+}
+document.querySelectorAll('#botLangGroup [data-botlang]').forEach(b => b.addEventListener('click', () => { setBotLang(b.dataset.botlang); S.dirty = true; }));
+
+function renderBotStats() {
+    const d = S.draft;
+    const has = !!(d.botFiles && d.botFiles.length);
+    $('botZipStats').style.display = has ? '' : 'none';
+    $('botZipRm').style.display = has ? '' : 'none';
+    $('fBotCode').disabled = has;
+    if (has) $('botZipStats').textContent = '📦 ' + (d.botZipName || 'ZIP') + ' — ' + d.botFiles.length + ' ملف — ' + sizeOf(d.botFiles) + 'MB';
+}
+function renderBotInfo() {
+    const d = S.draft;
+    const box = $('botInfo');
+    if (d.bot && d.bot.url) {
+        box.style.display = '';
+        box.innerHTML = '🤖 شغال، راقبه من هنا: <a href="' + esc(d.bot.url) + '" target="_blank" rel="noopener">' + esc(d.bot.url) + '</a>';
+    } else {
+        box.style.display = 'none';
+        box.innerHTML = '';
+    }
+}
+async function loadBotZip(file) {
+    if (!file) return;
+    try {
+        const entries = await readZipFile(file);
+        if (!entries) return;
+        const clean = cleanZipEntries(entries).filter(f => !SRC_SKIP.test(f.path));
+        if (!clean.length) throw new Error('الـ ZIP فارغ');
+        checkSize(clean, 300);
+        S.draft.botFiles = clean.map(f => ({ path: f.path, data: f.data }));
+        S.draft.botZipName = file.name;
+        S.dirty = true;
+        toast('تم رفع ملفات البوت ✅ (' + clean.length + ' ملف)');
+    } catch (e) { toast(e.message || 'تعذر قراءة الـ ZIP', 4500); }
+    finally { renderBotStats(); }
+}
+$('botZipBtn').onclick = () => $('botZipInput').click();
+$('botZipInput').onchange = e => { const f = e.target.files[0]; loadBotZip(f).finally(() => { e.target.value = ''; }); };
+$('botZipRm').onclick = () => { S.draft.botFiles = null; S.draft.botZipName = ''; S.dirty = true; renderBotStats(); };
+
+async function deployBot(id) {
+    const app = S.apps.find(a => a.id === id);
+    if (!app) return;
+    if (!(app.botCode || '').trim() && !(app.botFiles && app.botFiles.length)) { openEditor(app); return toast('اكتب كود البوت أو ارفع ملفاته أول شي'); }
+    if (!(app.name || '').trim()) { openEditor(app); return toast('اكتب اسم التطبيق أول شي'); }
+    if (S.pushing) return toast('في عملية شغالة هسه، انتظر تخلص');
+    if (!getToken()) { S.pendingBot = id; openGhModal(); return toast('اربط GitHub أول شي، وبعدها ينشر البوت تلقائي', 3500); }
+    S.pushing = true;
+    const btn = $('deployBotBtn');
+    const prevText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ جاري نشر البوت...'; }
+    toast('جاري نشر البوت...', 60000);
+    try {
+        const res = await githubDeployBot({ token: getToken(), app, log: () => {} });
+        await patchApp(id, a => { a.bot = { owner: res.owner, name: res.repo, url: res.url, deployedAt: Date.now() }; });
+        if (S.draft && S.draft.id === id) { S.draft.bot = S.apps.find(a => a.id === id).bot; renderBotInfo(); }
+        toast('تم نشر البوت 🤖 يشتغل الآن، راقبه من تبويب Actions بمستودعه', 6500);
+    } catch (e) {
+        toast('فشل نشر البوت: ' + (e.message || ''), 6000);
+    } finally {
+        S.pushing = false;
+        if (btn) { btn.disabled = false; btn.textContent = prevText; }
+    }
+}
+$('deployBotBtn').onclick = async () => {
+    if (!S.draft) return;
+    if (!(await saveDraft(false))) return;
+    deployBot(S.draft.id);
+};
+(() => {
+    const head = $('secBotHead'), body = $('secBotBody'), arrow = $('secBotToggle');
+    const go = e => { e.preventDefault(); toggleSection(head, body, arrow); };
+    head.addEventListener('click', go);
+    head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') go(e); });
+})();
+
 function renderSiteInfo() {
     const d = S.draft;
     const box = $('siteInfo');
@@ -3626,6 +3858,9 @@ function fillForm(d) {
     $('fJdk').value = d.jdk || '17';
     $('fSeoTitle').value = d.seoTitle || '';
     $('fSeoDesc').value = d.seoDesc || '';
+    $('fBotCode').value = d.botCode || '';
+    $('fBotLibs').value = d.botLibs || '';
+    setBotLang(d.botLang || 'python');
     renderPerms(d.permissions || []);
     document.querySelectorAll('#viewEdit .invalid').forEach(x => x.classList.remove('invalid'));
     setPyRun(d.pyRun || 'console');
@@ -3633,6 +3868,8 @@ function fillForm(d) {
     renderIcon();
     renderZipStats();
     renderSiteInfo();
+    renderBotStats();
+    renderBotInfo();
 }
 
 function readForm() {
@@ -3658,6 +3895,8 @@ function readForm() {
     d.jdk = $('fJdk').value || '17';
     d.seoTitle = $('fSeoTitle').value.trim();
     d.seoDesc = $('fSeoDesc').value.trim();
+    d.botCode = $('fBotCode').value;
+    d.botLibs = $('fBotLibs').value;
     d.permissions = [...document.querySelectorAll('#permsGroup input[data-perm]:checked')].map(el => el.dataset.perm);
     return d;
 }
@@ -3957,6 +4196,10 @@ async function loadAndroidZip(file) {
         if (!entries) return;
         const { files } = normalizeAndroidZip(entries);
         checkSize(files, 1024);
+        if (files.length > 3000) {
+            const ok = confirm('مشروعك فيه ' + files.length + ' ملف. رفعه عبر المتصفح لـ GitHub بياخذ وقت طويل جداً (ممكن أكثر من ساعة، GitHub يحتاج طلب منفصل لكل ملف صورة/ثنائي) وفيه خطر يوصل حد GitHub قبل لا يخلص. ينصح تشيل من المشروع أي مجلد مو ضروري للبناء (نسخ احتياطية، صور تجريبية كثيرة، كاش) وترفعه مرة ثانية أصغر. تريد تكمل بهذا الحجم رغم هذا؟');
+            if (!ok) { toast('إلغيت الرفع — نظف المشروع وجرب مرة ثانية', 4500); $('apkText').textContent = 'اضغط أو اسحب ZIP مشروع Android Studio'; return; }
+        }
         S.draft.srcFiles = files; S.draft.srcZipName = file.name; S.dirty = true;
         if (!$('fName').value.trim()) $('fName').value = file.name.replace(/\.zip$/i, '');
         toast('تم فك المشروع ✅ (' + files.length + ' ملف)');
