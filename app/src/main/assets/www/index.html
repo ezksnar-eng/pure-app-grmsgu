@@ -2915,6 +2915,8 @@ function asText(u8) {
     } catch (e) { return null; }
 }
 
+/* ذاكرة مؤقتة لملفات ثنائية اترفعت خلال نفس الجلسة، عشان إعادة المحاولة بعد تجاوز حد GitHub ما تعيد رفع نفس الملفات */
+const BLOB_SHA_CACHE = new Map();
 function makeGH(token) {
     async function api(path, opts, attempt) {
         opts = opts || {};
@@ -2938,7 +2940,9 @@ function makeGH(token) {
         let data = null;
         try { data = txt ? JSON.parse(txt) : null; } catch (e) { data = { message: txt }; }
         if ((res.status === 403 || res.status === 429) && res.headers.get('x-ratelimit-remaining') === '0') {
-            throw new Error('وصلت الحد المسموح من طلبات GitHub، جرب بعد شوي');
+            const resetAt = parseInt(res.headers.get('x-ratelimit-reset') || '0', 10);
+            const mins = resetAt ? Math.max(1, Math.ceil((resetAt * 1000 - Date.now()) / 60000)) : null;
+            throw new Error('وصلت الحد المسموح من GitHub (5000 طلب بالساعة لكل حساب — هذا حد من GitHub نفسه، مو شي أكدر أسرّعه أو أتجاوزه). ' + (mins ? 'يرجع يسمح بعد ' + mins + ' دقيقة تقريباً. ' : 'جرب بعد شوي. ') + 'لما تعيد المحاولة، الملفات لي رفعتها قبل هذا ما تترفع من جديد (توفير وقت).');
         }
         if ((res.status === 403 || res.status === 429) && attempt < 4 && /secondary|abuse|rate limit/i.test(txt)) {
             const ra = parseInt(res.headers.get('retry-after') || '0', 10);
@@ -3110,14 +3114,22 @@ async function githubBuild(ctx) {
         if (txt !== null) entries.push({ path: f.path, mode: '100644', type: 'blob', content: txt });
         else binaries.push(f);
     }
+    if (binaries.length > 4500) {
+        log('⚠️ تنبيه: GitHub نفسه يسمح بـ 5000 طلب بالساعة الوحدة لكل حساب — مشروعك فيه ' + binaries.length + ' ملف ثنائي يحتاج طلب منفصل لكل وحد، يعني ممكن يوصل الحد قبل لا يخلص. هذا حد من GitHub نفسه، مو شي أقدر أتجاوزه بالسرعة. إذا توقف بسبب الحد، انتظر ساعة وأعد المحاولة — الملفات لي رفعتها قبل هذا راح تتحفظ بذاكرة المتصفح المؤقتة وما تنرفع من جديد (توفير وقت كبير بإعادة المحاولة).');
+    }
     log('رفع ' + files.length + ' ملف' + (binaries.length > 500 ? ' (' + binaries.length + ' ملف ثنائي يحتاج طلب منفصل لكل وحد — هذا راح ياخذ وقت، استمر بالانتظار)' : '') + '...');
-    let done = 0;
+    let done = 0, cached = 0;
     const concurrency = binaries.length > 2000 ? 12 : 6;
     await pool(binaries, concurrency, async f => {
-        const b = (await gh.api('/repos/' + me + '/' + repoName + '/git/blobs', { method: 'POST', body: { content: u8ToB64(f.data), encoding: 'base64' } })).data;
-        entries.push({ path: f.path, mode: '100644', type: 'blob', sha: b.sha });
+        const key = repoName + '|' + f.path + '|' + crc32(f.data) + '|' + f.data.length;
+        let sha = BLOB_SHA_CACHE.get(key);
+        if (!sha) {
+            sha = (await gh.api('/repos/' + me + '/' + repoName + '/git/blobs', { method: 'POST', body: { content: u8ToB64(f.data), encoding: 'base64' } })).data.sha;
+            BLOB_SHA_CACHE.set(key, sha);
+        } else cached++;
+        entries.push({ path: f.path, mode: '100644', type: 'blob', sha });
         done++;
-        if (done % 100 === 0 || done === binaries.length) log('رفع ' + done + '/' + binaries.length + ' ملف ثنائي...');
+        if (done % 100 === 0 || done === binaries.length) log('رفع ' + done + '/' + binaries.length + ' ملف ثنائي' + (cached ? ' (' + cached + ' منهم كانت محفوظة من محاولة سابقة)' : '') + '...');
         progress(8 + Math.round(24 * done / Math.max(binaries.length, 1)));
     });
 
