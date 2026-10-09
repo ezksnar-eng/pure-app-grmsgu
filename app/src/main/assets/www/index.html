@@ -2541,7 +2541,7 @@ function injectSeo(html, seo, pageUrl, iconDataUrl) {
         '<meta name="twitter:card" content="summary">',
         '<meta name="robots" content="index, follow">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
-        jsonLd ? '<script type="application/ld+json">' + jsonLd + '</script>' : ''
+        jsonLd ? '<script type="application/ld+json">' + jsonLd + '<\/script>' : ''
     ].filter(Boolean).join('\n    ');
     if (!tags) return html;
     if (/<title>[\s\S]*?<\/title>/i.test(html) && seo.title) html = html.replace(/<title>[\s\S]*?<\/title>/i, '');
